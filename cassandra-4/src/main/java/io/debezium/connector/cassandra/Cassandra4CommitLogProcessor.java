@@ -252,7 +252,7 @@ public class Cassandra4CommitLogProcessor extends AbstractProcessor {
                         LOGGER.info("{} completed prematurely", commitLog.toString());
                         return new ProcessingResult(commitLog, ProcessingResult.Result.COMPLETED_PREMATURELY);
                     }
-                    // TODO make this configurable maybe
+                    // TODO mae this configurable maybe
                     Thread.sleep(10000);
                     parseIndexFile();
                 }
