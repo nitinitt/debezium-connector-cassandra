@@ -98,7 +98,7 @@ public class Cassandra4CommitLogProcessor extends AbstractProcessor {
 
     final static Set<Pair<CommitLogProcessingCallable, Future<ProcessingResult>>> submittedProcessings = ConcurrentHashMap.newKeySet();
 
-    private void submit(Path index) {
+    void submit(Path index) {
         CommitLogProcessingCallable callable = new CommitLogProcessingCallable(new LogicalCommitLog(index.toFile()),
                 queues,
                 metrics,

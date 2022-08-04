@@ -15,18 +15,23 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
 import java.io.File;
+import java.io.FileWriter;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.UUID;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.db.commitlog.CommitLogReader;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.base.ChangeEventQueue;
 
 public abstract class AbstractCommitLogProcessorTest extends EmbeddedCassandra4ConnectorTestBase {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AbstractCommitLogProcessorTest.class);
     public ChangeEventQueue<Event> queue;
     public CassandraConnectorContext context;
     public Cassandra4CommitLogProcessor commitLogProcessor;
@@ -79,19 +84,16 @@ public abstract class AbstractCommitLogProcessorTest extends EmbeddedCassandra4C
         File cdcLoc = new File(DatabaseDescriptor.getCommitLogLocation());
         File[] commitLogs = CommitLogUtil.getCommitLogs(cdcLoc);
 
-        Cassandra4CommitLogReadHandlerImpl commitLogReadHandler = new Cassandra4CommitLogReadHandlerImpl(
-                context.getSchemaHolder(),
-                context.getQueues(),
-                context.getOffsetWriter(),
-                new RecordMaker(context.getCassandraConnectorConfig().tombstonesOnDelete(),
-                        new Filters(context.getCassandraConnectorConfig().fieldExcludeList()),
-                        context.getCassandraConnectorConfig()),
-                new CommitLogProcessorMetrics());
-
-        CommitLogReader reader = new CommitLogReader();
+        Cassandra4CommitLogProcessor processor = new Cassandra4CommitLogProcessor(context);
 
         for (File commitLog : commitLogs) {
-            reader.readCommitLogSegment(commitLogReadHandler, commitLog, true);
+            String newFileName = commitLog.toString().replace(".log", "_cdc.idx");
+            Files.createFile(Paths.get(newFileName));
+            FileWriter myWriter = new FileWriter(newFileName);
+            myWriter.write("19999\nCOMPLETED");
+            myWriter.close();
+            LOGGER.info("Submitted the file: {}", newFileName);
+            processor.submit(Paths.get(newFileName));
         }
     }
 }
