@@ -9,8 +9,6 @@ import static java.nio.file.StandardWatchEventKinds.ENTRY_CREATE;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.WatchEvent;
 import java.time.Duration;
@@ -24,12 +22,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.db.commitlog.CommitLogPosition;
 import org.apache.commons.math3.util.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.debezium.DebeziumException;
 import io.debezium.connector.base.ChangeEventQueue;
 
 /**
@@ -52,7 +48,7 @@ public class Cassandra4CommitLogProcessor extends AbstractProcessor {
     private final boolean errorCommitLogReprocessEnabled;
     private final CommitLogTransfer commitLogTransfer;
     private final ExecutorService executorService;
-    final static Set<Pair<AbstractCassandra4CommitLogParser, Future<ProcessingResult>>> submittedProcessings = ConcurrentHashMap.newKeySet();
+    final static Set<Pair<AbstractCassandra4CommitLogParser, Future<CommitLogProcessingResult>>> submittedProcessings = ConcurrentHashMap.newKeySet();
 
     public Cassandra4CommitLogProcessor(CassandraConnectorContext context) {
         super(NAME, Duration.ZERO);
@@ -78,7 +74,7 @@ public class Cassandra4CommitLogProcessor extends AbstractProcessor {
     public void stop() {
         try {
             executorService.shutdown();
-            for (final Pair<AbstractCassandra4CommitLogParser, Future<ProcessingResult>> submittedProcessing : submittedProcessings) {
+            for (final Pair<AbstractCassandra4CommitLogParser, Future<CommitLogProcessingResult>> submittedProcessing : submittedProcessings) {
                 try {
                     submittedProcessing.getFirst().complete();
                     submittedProcessing.getSecond().get();
@@ -101,7 +97,7 @@ public class Cassandra4CommitLogProcessor extends AbstractProcessor {
                 .map(submittedProcessings::remove);
     }
 
-    private void submit(Path index) {
+    void submit(Path index) {
         final AbstractCassandra4CommitLogParser parser;
 
         if (context.getCassandraConnectorConfig().isCommitLogRealTimeProcessingEnabled()) {
@@ -111,7 +107,7 @@ public class Cassandra4CommitLogProcessor extends AbstractProcessor {
             parser = new Cassandra4CommitLogBatchParser(new LogicalCommitLog(index.toFile()), queues, metrics, this.context);
         }
 
-        Future<ProcessingResult> future = executorService.submit(() -> parser.process());
+        Future<CommitLogProcessingResult> future = executorService.submit(parser::process);
         submittedProcessings.add(new Pair<>(parser, future));
         LOGGER.debug("Processing {} callables.", submittedProcessings.size());
     }
@@ -161,103 +157,5 @@ public class Cassandra4CommitLogProcessor extends AbstractProcessor {
             initial = false;
         }
         watcher.poll();
-    }
-
-    public static class ProcessingResult {
-        public enum Result {
-            OK,
-            ERROR,
-            DOES_NOT_EXIST,
-            COMPLETED_PREMATURELY;
-        }
-
-        public final LogicalCommitLog commitLog;
-        public final Result result;
-        public final Exception ex;
-
-        public ProcessingResult(LogicalCommitLog commitLog) {
-            this(commitLog, Result.OK, null);
-        }
-
-        public ProcessingResult(LogicalCommitLog commitLog, Result result) {
-            this(commitLog, result, null);
-        }
-
-        public ProcessingResult(LogicalCommitLog commitLog, Result result, Exception ex) {
-            this.commitLog = commitLog;
-            this.result = result;
-            this.ex = ex;
-        }
-
-        @Override
-        public String toString() {
-            return "ProcessingResult{" +
-                    "commitLog=" + commitLog +
-                    ", result=" + result +
-                    ", ex=" + (ex != null ? ex.getMessage() : "none") + '}';
-        }
-    }
-
-    public static class LogicalCommitLog {
-        CommitLogPosition commitLogPosition;
-        File log;
-        File index;
-        long commitLogSegmentId;
-        int offsetOfEndOfLastWrittenCDCMutation = 0;
-        boolean completed = false;
-
-        public LogicalCommitLog(File index) {
-            this.index = index;
-            this.log = parseCommitLogName(index);
-            this.commitLogSegmentId = parseSegmentId(log);
-            this.commitLogPosition = new CommitLogPosition(commitLogSegmentId, 0);
-        }
-
-        public static File parseCommitLogName(File index) {
-            String newFileName = index.toPath().getFileName().toString().replace("_cdc.idx", ".log");
-            return index.toPath().getParent().resolve(newFileName).toFile();
-        }
-
-        public static long parseSegmentId(File logName) {
-            return Long.parseLong(logName.getName().split("-")[2].split("\\.")[0]);
-        }
-
-        public boolean exists() {
-            return log.exists();
-        }
-
-        public void parseCommitLogIndex() throws DebeziumException {
-            if (!index.exists()) {
-                return;
-            }
-            try {
-                List<String> lines = Files.readAllLines(index.toPath(), StandardCharsets.UTF_8);
-                if (lines.isEmpty()) {
-                    return;
-                }
-
-                offsetOfEndOfLastWrittenCDCMutation = Integer.parseInt(lines.get(0));
-
-                if (lines.size() == 2) {
-                    completed = "COMPLETED".equals(lines.get(1));
-                }
-            }
-            catch (final Exception ex) {
-                throw new DebeziumException(String.format("Unable to parse commit log index file %s", index.toPath()),
-                        ex);
-            }
-        }
-
-        @Override
-        public String toString() {
-            return "LogicalCommitLog{" +
-                    "commitLogPosition=" + commitLogPosition +
-                    ", synced=" + offsetOfEndOfLastWrittenCDCMutation +
-                    ", completed=" + completed +
-                    ", log=" + log +
-                    ", index=" + index +
-                    ", commitLogSegmentId=" + commitLogSegmentId +
-                    '}';
-        }
     }
 }

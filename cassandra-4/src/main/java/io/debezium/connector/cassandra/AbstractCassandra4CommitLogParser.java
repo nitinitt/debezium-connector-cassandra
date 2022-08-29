@@ -6,6 +6,9 @@
 
 package io.debezium.connector.cassandra;
 
+import static io.debezium.connector.cassandra.CassandraConnectorConfig.DEFAULT_COMMIT_LOG_TRANSFER_CLASS;
+import static io.debezium.connector.cassandra.CommitLogProcessingResult.Result.DOES_NOT_EXIST;
+
 import java.util.List;
 import java.util.Set;
 
@@ -29,10 +32,10 @@ public abstract class AbstractCassandra4CommitLogParser {
     private final CommitLogTransfer commitLogTransfer;
     private final Set<String> erroneousCommitLogs;
     protected boolean completePrematurely = false;
-    protected Cassandra4CommitLogProcessor.LogicalCommitLog commitLog;
+    protected LogicalCommitLog commitLog;
     protected int pollingInterval;
 
-    public AbstractCassandra4CommitLogParser(Cassandra4CommitLogProcessor.LogicalCommitLog commitLog, final List<ChangeEventQueue<Event>> queues,
+    public AbstractCassandra4CommitLogParser(LogicalCommitLog commitLog, final List<ChangeEventQueue<Event>> queues,
                                              final CommitLogProcessorMetrics metrics,
                                              final CassandraConnectorContext context) {
         this.commitLogReader = new CommitLogReader();
@@ -58,19 +61,19 @@ public abstract class AbstractCassandra4CommitLogParser {
         completePrematurely = true;
     }
 
-    public abstract Cassandra4CommitLogProcessor.ProcessingResult parse();
+    public abstract CommitLogProcessingResult parse();
 
-    public Cassandra4CommitLogProcessor.ProcessingResult process() {
+    public CommitLogProcessingResult process() {
         if (!commitLog.exists()) {
             LOGGER.warn("Commit log " + commitLog + " does not exist!");
-            return new Cassandra4CommitLogProcessor.ProcessingResult(commitLog, Cassandra4CommitLogProcessor.ProcessingResult.Result.DOES_NOT_EXIST);
+            return new CommitLogProcessingResult(commitLog, DOES_NOT_EXIST);
         }
 
         LOGGER.info("Processing commit log {}", commitLog.log.toString());
         metrics.setCommitLogFilename(commitLog.log.toString());
         metrics.setCommitLogPosition(0);
 
-        Cassandra4CommitLogProcessor.ProcessingResult result = parse();
+        CommitLogProcessingResult result = parse();
         enqueueEOFEvent();
         Cassandra4CommitLogProcessor.removeProcessing(this);
         LOGGER.debug("Processing {} callables.", Cassandra4CommitLogProcessor.submittedProcessings.size());
@@ -87,14 +90,14 @@ public abstract class AbstractCassandra4CommitLogParser {
         }
     }
 
-    protected void processCommitLog(Cassandra4CommitLogProcessor.LogicalCommitLog logicalCommitLog, CommitLogPosition position) {
+    protected void processCommitLog(LogicalCommitLog logicalCommitLog, CommitLogPosition position) {
         try {
-            LOGGER.debug("starting to read commit log segments {} on position {}", logicalCommitLog, position);
+            LOGGER.debug("Starting to read commit log segments {} on position {}", logicalCommitLog, position);
             commitLogReader.readCommitLogSegment(commitLogReadHandler, logicalCommitLog.log, position, false);
-            LOGGER.debug("finished reading commit log segments {} on position {}", logicalCommitLog, position);
+            LOGGER.debug("Finished reading commit log segments {} on position {}", logicalCommitLog, position);
         }
         catch (Exception e) {
-            if (commitLogTransfer.getClass().getName().equals(CassandraConnectorConfig.DEFAULT_COMMIT_LOG_TRANSFER_CLASS)) {
+            if (commitLogTransfer.getClass().getName().equals(DEFAULT_COMMIT_LOG_TRANSFER_CLASS)) {
                 throw new DebeziumException(String.format("Error occurred while processing commit log %s",
                         logicalCommitLog.log), e);
             }
@@ -104,7 +107,7 @@ public abstract class AbstractCassandra4CommitLogParser {
         }
     }
 
-    protected void parseIndexFile(Cassandra4CommitLogProcessor.LogicalCommitLog commitLog) throws DebeziumException {
+    protected void parseIndexFile(LogicalCommitLog commitLog) throws DebeziumException {
         try {
             commitLog.parseCommitLogIndex();
         }
