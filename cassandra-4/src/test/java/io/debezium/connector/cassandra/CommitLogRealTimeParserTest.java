@@ -88,7 +88,7 @@ public class CommitLogRealTimeParserTest extends AbstractCommitLogProcessorTest 
         assertEquals(queue.totalCapacity(), queue.remainingCapacity());
         String cdcLoc = DatabaseDescriptor.getCDCLogLocation();
         LOGGER.info("CDC Location: {}", cdcLoc);
-        await().forever().timeout(Duration.ofSeconds(2)).until(() -> CommitLogUtil.getIndexes(new File(cdcLoc)).length >= 1);
+        await().timeout(Duration.ofSeconds(3)).until(() -> CommitLogUtil.getIndexes(new File(cdcLoc)).length >= 1);
         File[] commitLogIndexes = CommitLogUtil.getIndexes(new File(cdcLoc));
         Arrays.sort(commitLogIndexes, (file1, file2) -> CommitLogUtil.compareCommitLogsIndexes(file1, file2));
         Assert.assertTrue("Atleast 1 idx file must be generated", commitLogIndexes.length >= 1);
