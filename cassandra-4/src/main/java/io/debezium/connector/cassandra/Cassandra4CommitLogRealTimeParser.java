@@ -5,7 +5,8 @@
  */
 package io.debezium.connector.cassandra;
 
-import static io.debezium.connector.cassandra.Cassandra4CommitLogProcessor.ProcessingResult.Result.ERROR;
+import static io.debezium.connector.cassandra.CommitLogProcessingResult.Result.COMPLETED_PREMATURELY;
+import static io.debezium.connector.cassandra.CommitLogProcessingResult.Result.ERROR;
 
 import java.util.List;
 
@@ -19,33 +20,33 @@ public class Cassandra4CommitLogRealTimeParser extends AbstractCassandra4CommitL
     private static final Logger LOGGER = LoggerFactory.getLogger(Cassandra4CommitLogRealTimeParser.class);
     private Integer offset = null;
 
-    public Cassandra4CommitLogRealTimeParser(Cassandra4CommitLogProcessor.LogicalCommitLog commitLog, List<ChangeEventQueue<Event>> queues,
+    public Cassandra4CommitLogRealTimeParser(LogicalCommitLog commitLog, List<ChangeEventQueue<Event>> queues,
                                              CommitLogProcessorMetrics metrics, CassandraConnectorContext context) {
         super(commitLog, queues, metrics, context);
     }
 
     @Override
-    public Cassandra4CommitLogProcessor.ProcessingResult parse() {
+    public CommitLogProcessingResult parse() {
         try {
             parseIndexFile(commitLog);
             while (!commitLog.completed) {
-                LOGGER.info("Polling for completeness of idx file for: {}", commitLog.toString());
+                LOGGER.info("Polling for completeness of idx file for: {}", commitLog);
                 if (completePrematurely) {
-                    LOGGER.info("{} completed prematurely", commitLog.toString());
-                    return new Cassandra4CommitLogProcessor.ProcessingResult(commitLog, Cassandra4CommitLogProcessor.ProcessingResult.Result.COMPLETED_PREMATURELY);
+                    LOGGER.info("{} completed prematurely", commitLog);
+                    return new CommitLogProcessingResult(commitLog, COMPLETED_PREMATURELY);
                 }
 
                 CommitLogPosition commitLogPosition = null;
                 if (offset == null) {
-                    LOGGER.info("Start to read the partial file : {}", commitLog.toString());
+                    LOGGER.info("Start to read the partial file : {}", commitLog);
                     commitLogPosition = new CommitLogPosition(commitLog.commitLogSegmentId, 0);
                 }
                 else if (offset < commitLog.offsetOfEndOfLastWrittenCDCMutation) {
-                    LOGGER.info("Resume to read the partial file : {}", commitLog.toString());
+                    LOGGER.info("Resume to read the partial file: {}", commitLog);
                     commitLogPosition = new CommitLogPosition(commitLog.commitLogSegmentId, offset);
                 }
                 else {
-                    LOGGER.info("No movement in offset in IDX file: {}", commitLog.toString());
+                    LOGGER.info("No movement in offset in idx file: {}", commitLog);
                 }
 
                 if (commitLogPosition != null) {
@@ -59,7 +60,7 @@ public class Cassandra4CommitLogRealTimeParser extends AbstractCassandra4CommitL
                 parseIndexFile(commitLog);
             }
 
-            LOGGER.info("IDX file is completed for: {}", commitLog.toString());
+            LOGGER.info("Completed idx file for: {}", commitLog);
             CommitLogPosition commitLogPosition;
             if (offset != null) {
                 commitLogPosition = new CommitLogPosition(commitLog.commitLogSegmentId, offset);
@@ -69,11 +70,11 @@ public class Cassandra4CommitLogRealTimeParser extends AbstractCassandra4CommitL
             }
             metrics.setCommitLogPosition(commitLogPosition.position);
             processCommitLog(commitLog, commitLogPosition);
-            return new Cassandra4CommitLogProcessor.ProcessingResult(commitLog);
+            return new CommitLogProcessingResult(commitLog);
         }
         catch (final Exception ex) {
-            LOGGER.error("Processing of {} errored out", commitLog.toString(), ex);
-            return new Cassandra4CommitLogProcessor.ProcessingResult(commitLog, ERROR, ex);
+            LOGGER.error("Processing of {} errored out", commitLog, ex);
+            return new CommitLogProcessingResult(commitLog, ERROR, ex);
         }
     }
 }

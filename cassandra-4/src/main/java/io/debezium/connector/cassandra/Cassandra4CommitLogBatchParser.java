@@ -5,8 +5,8 @@
  */
 package io.debezium.connector.cassandra;
 
-import static io.debezium.connector.cassandra.Cassandra4CommitLogProcessor.ProcessingResult.Result.COMPLETED_PREMATURELY;
-import static io.debezium.connector.cassandra.Cassandra4CommitLogProcessor.ProcessingResult.Result.ERROR;
+import static io.debezium.connector.cassandra.CommitLogProcessingResult.Result.COMPLETED_PREMATURELY;
+import static io.debezium.connector.cassandra.CommitLogProcessingResult.Result.ERROR;
 
 import java.util.List;
 
@@ -20,20 +20,20 @@ public class Cassandra4CommitLogBatchParser extends AbstractCassandra4CommitLogP
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Cassandra4CommitLogBatchParser.class);
 
-    public Cassandra4CommitLogBatchParser(Cassandra4CommitLogProcessor.LogicalCommitLog commitLog, List<ChangeEventQueue<Event>> queues,
+    public Cassandra4CommitLogBatchParser(LogicalCommitLog commitLog, List<ChangeEventQueue<Event>> queues,
                                           CommitLogProcessorMetrics metrics, CassandraConnectorContext context) {
         super(commitLog, queues, metrics, context);
     }
 
     @Override
-    public Cassandra4CommitLogProcessor.ProcessingResult parse() {
+    public CommitLogProcessingResult parse() {
         try {
             parseIndexFile(commitLog);
 
             while (!commitLog.completed) {
                 if (completePrematurely) {
-                    LOGGER.info("{} completed prematurely", commitLog);
-                    return new Cassandra4CommitLogProcessor.ProcessingResult(commitLog, COMPLETED_PREMATURELY);
+                    LOGGER.info("Processing of {} completed prematurely", commitLog);
+                    return new CommitLogProcessingResult(commitLog, COMPLETED_PREMATURELY);
                 }
                 Thread.sleep(pollingInterval);
                 parseIndexFile(commitLog);
@@ -43,18 +43,18 @@ public class Cassandra4CommitLogBatchParser extends AbstractCassandra4CommitLogP
         }
         catch (final Exception ex) {
             LOGGER.error("Processing of {} errored out", commitLog, ex);
-            return new Cassandra4CommitLogProcessor.ProcessingResult(commitLog, ERROR, ex);
+            return new CommitLogProcessingResult(commitLog, ERROR, ex);
         }
 
-        Cassandra4CommitLogProcessor.ProcessingResult result;
+        CommitLogProcessingResult result;
 
         // process commit log from start to the end as it is completed at this point
         try {
             processCommitLog(commitLog, new CommitLogPosition(commitLog.commitLogSegmentId, 0));
-            result = new Cassandra4CommitLogProcessor.ProcessingResult(commitLog);
+            result = new CommitLogProcessingResult(commitLog);
         }
         catch (final Exception ex) {
-            result = new Cassandra4CommitLogProcessor.ProcessingResult(commitLog, ERROR, ex);
+            result = new CommitLogProcessingResult(commitLog, ERROR, ex);
         }
 
         LOGGER.info("Processing result: {}", result);
